@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Music House (SoundCloud)</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    color: #fff;
+    margin: 0;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .layout {
+    max-width: 1000px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 20px;
+  }
+  @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
+  .card {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 16px;
+    padding: 28px;
+    backdrop-filter: blur(10px);
+  }
+  h1 {
+    font-size: 22px;
+    margin: 0 0 4px 0;
+    background: linear-gradient(90deg, #FF5500, #ff8800);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  h2 { font-size: 15px; margin: 0 0 14px 0; color: #ddd; display: flex; align-items: center; gap: 8px; }
+  .subtitle { color: #aaa; font-size: 13px; margin-bottom: 24px; }
+  .login-btn {
+    background: #FF5500; color: #000; border: none; padding: 14px 24px;
+    border-radius: 999px; font-weight: 700; font-size: 15px; cursor: pointer; width: 100%;
+  }
+  .login-btn:hover { background: #ff7733; }
+  .presence {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(255,85,0,0.15); color: #ff8844; padding: 6px 12px;
+    border-radius: 999px; font-size: 12px; font-weight: 600; margin-bottom: 20px;
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: #ff8844; }
+  .now-playing { background: rgba(0,0,0,0.25); border-radius: 12px; padding: 20px; margin-bottom: 20px; min-height: 90px; }
+  .track-name { font-size: 17px; font-weight: 700; margin-bottom: 2px; }
+  .artist-name { font-size: 13px; color: #bbb; }
+  .empty-state { color: #888; font-size: 13px; text-align: center; padding: 20px 0; }
+  .progress-bar { height: 4px; background: rgba(255,255,255,0.15); border-radius: 2px; margin-top: 14px; overflow: hidden; }
+  .progress-fill { height: 100%; background: #ff8844; width: 0%; transition: width 0.5s linear; }
+  input[type="text"] {
+    width: 100%; padding: 12px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(0,0,0,0.2); color: #fff; font-size: 14px; margin-bottom: 10px;
+  }
+  input[type="text"]::placeholder { color: #777; }
+  .results { max-height: 220px; overflow-y: auto; margin-bottom: 8px; }
+  .result-item { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; }
+  .result-item:hover { background: rgba(255,255,255,0.08); }
+  .result-item img { width: 40px; height: 40px; border-radius: 4px; object-fit: cover; background: #333; }
+  .result-text { font-size: 13px; flex: 1; min-width: 0; }
+  .result-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .result-artist { color: #999; font-size: 11px; }
+  .result-genre { color: #ff8844; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .add-btn {
+    background: rgba(255,85,0,0.2); color: #ff8844; border: none; border-radius: 6px;
+    padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  }
+  .add-btn:hover { background: rgba(255,85,0,0.35); }
+  .result-item.blocked { opacity: 0.5; }
+  .blocked-tag { background: rgba(255,107,107,0.15); color: #ff8a8a; font-size: 10px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
+  .status { font-size: 12px; color: #888; margin-top: 16px; text-align: center; }
+  .error { color: #ff6b6b; font-size: 13px; margin-bottom: 12px; }
+
+  .vote-row { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .vote-btn {
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff;
+    border-radius: 999px; padding: 8px 14px; font-size: 13px; cursor: pointer; flex: 1; min-width: 70px;
+  }
+  .vote-btn:hover { background: rgba(255,255,255,0.16); }
+  .vote-btn.active { background: rgba(255,85,0,0.25); border-color: #ff8844; }
+  .skip-btn {
+    background: rgba(255,107,107,0.15); border: 1px solid rgba(255,107,107,0.3); color: #ff8a8a;
+    border-radius: 999px; padding: 8px 14px; font-size: 13px; cursor: pointer; flex: 1.4; min-width: 110px;
+  }
+  .skip-btn:hover { background: rgba(255,107,107,0.25); }
+  .skip-btn.active { background: rgba(255,107,107,0.35); border-color: #ff6b6b; }
+
+  .queue-list { max-height: 220px; overflow-y: auto; margin-bottom: 16px; }
+  .queue-item { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; background: rgba(0,0,0,0.15); margin-bottom: 6px; }
+  .queue-position { font-size: 11px; color: #666; width: 18px; text-align: center; flex-shrink: 0; }
+  .queue-item img { width: 34px; height: 34px; border-radius: 4px; flex-shrink: 0; object-fit: cover; background: #333; }
+  .queue-text { font-size: 12px; flex: 1; min-width: 0; }
+  .queue-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .queue-artist { color: #999; font-size: 10px; }
+  .queue-remove { background: none; border: none; color: #666; cursor: pointer; font-size: 16px; flex-shrink: 0; padding: 0 4px; }
+  .queue-remove:hover { color: #ff6b6b; }
+  .queue-empty { color: #666; font-size: 12px; text-align: center; padding: 16px 0; }
+
+  .comments-list { max-height: 320px; overflow-y: auto; margin-bottom: 14px; display: flex; flex-direction: column; gap: 2px; }
+  .comment { background: rgba(0,0,0,0.15); border-radius: 8px; padding: 8px 12px; }
+  .comment.grouped { background: transparent; border-radius: 0; padding: 1px 12px; margin-top: -2px; }
+  .comment-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
+  .comment-username { font-size: 12px; font-weight: 700; color: #ff8844; }
+  .comment-time { font-size: 10px; color: #666; }
+  .comment-time-inline { font-size: 9px; color: #555; margin-left: 6px; opacity: 0; }
+  .comment.grouped:hover .comment-time-inline { opacity: 1; }
+  .comment-text { font-size: 13px; color: #eee; word-wrap: break-word; display: inline; }
+  .comment-track { font-size: 10px; color: #666; margin-top: 2px; font-style: italic; }
+  .comments-empty { color: #666; font-size: 12px; text-align: center; padding: 16px 0; }
+  .username-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .username-row input { margin-bottom: 0; }
+  .comment-input-row { display: flex; gap: 8px; }
+  .comment-input-row input { margin-bottom: 0; }
+  .send-btn { background: #FF5500; color: #000; border: none; border-radius: 8px; padding: 0 16px; font-weight: 700; cursor: pointer; font-size: 13px; }
+  .send-btn:hover { background: #ff7733; }
+  .username-locked { font-size: 12px; color: #999; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
+  .username-locked span.name { color: #ff8844; font-weight: 700; }
+  .change-name-btn { background: none; border: none; color: #666; font-size: 11px; cursor: pointer; text-decoration: underline; }
+
+  .comment-reactions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+  .reaction-chip {
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 999px;
+    padding: 2px 8px; font-size: 11px; cursor: pointer; color: #ccc; display: flex; align-items: center; gap: 4px;
+  }
+  .reaction-chip:hover { background: rgba(255,255,255,0.15); }
+  .reaction-chip.active { background: rgba(255,85,0,0.2); border-color: #ff8844; color: #ff8844; }
+  .reaction-add-row { display: flex; gap: 4px; margin-top: 6px; }
+  .reaction-add-btn { background: none; border: none; font-size: 13px; cursor: pointer; opacity: 0.5; padding: 2px 4px; }
+  .reaction-add-btn:hover { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="login-wrap" style="max-width:480px;margin:0 auto;">
+  <div class="card" id="login-view">
+    <h1>🏠 Music House</h1>
+    <div class="subtitle">Prototype: synced SoundCloud playback, shared queue, live comments</div>
+    <p style="font-size: 14px; color: #ccc;">Log in with SoundCloud to join the House.</p>
+    <button class="login-btn" onclick="window.location.href='/login'">Log in with SoundCloud</button>
+  </div>
+</div>
+
+<div class="layout" id="house-view" style="display:none;">
+  <div class="card">
+    <h1>🏠 Music House</h1>
+    <div class="presence"><span class="dot"></span><span id="presence-count">1</span> in the House</div>
+
+    <div class="now-playing" id="now-playing">
+      <div class="empty-state">No song playing yet. Search below to add one to the queue.</div>
+    </div>
+
+    <div class="vote-row" id="vote-row" style="display:none;">
+      <button class="vote-btn" id="vote-fire" onclick="castVote('fire')">🔥 <span id="count-fire">0</span></button>
+      <button class="vote-btn" id="vote-neutral" onclick="castVote('neutral')">😐 <span id="count-neutral">0</span></button>
+      <button class="vote-btn" id="vote-x" onclick="castVote('x')">❌ <span id="count-x">0</span></button>
+      <button class="skip-btn" id="skip-btn" onclick="castSkip()">⏭ Skip <span id="skip-count">(0/0)</span></button>
+    </div>
+
+    <input type="text" id="search-input" placeholder="Search for a song to add to the queue...">
+    <div class="results" id="results"></div>
+
+    <audio id="audio-player" style="display:none;"></audio>
+
+    <div class="status" id="status"></div>
+  </div>
+
+  <div style="display:flex; flex-direction:column; gap:20px;">
+    <div class="card">
+      <h2>🎵 Up Next</h2>
+      <div class="queue-list" id="queue-list">
+        <div class="queue-empty">Queue is empty. Search on the left to add songs.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>💬 House Comments</h2>
+
+      <div id="username-setup">
+        <div class="username-row">
+          <input type="text" id="username-input" placeholder="Pick a username...">
+          <button class="send-btn" onclick="saveUsername()">Set</button>
+        </div>
+      </div>
+      <div id="username-locked" class="username-locked" style="display:none;">
+        <span>Commenting as <span class="name" id="current-username"></span></span>
+        <button class="change-name-btn" onclick="changeUsername()">change</button>
+      </div>
+
+      <div class="comments-list" id="comments-list">
+        <div class="comments-empty">No comments yet. Say something!</div>
+      </div>
+
+      <div class="comment-input-row">
+        <input type="text" id="comment-input" placeholder="Add a comment... 🎉" maxlength="280">
+        <button class="send-btn" onclick="sendComment()">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// Client-side logic: OAuth (with PKCE handled server-side),
+// WebSocket sync, HTML5 audio playback (SoundCloud has no
+// proprietary playback SDK — it's just a stream URL), shared
+// queue, voting, skip, and live comments with reactions.
+// ============================================================
+
+let accessToken = null;
+let ws = null;
+let currentHouseState = null;
+let loadedTrackId = null;
+let currentQueue = [];
+let username = null;
+let mySessionId = null;
+let myVote = null;
+let mySkipped = false;
+
+const DRIFT_THRESHOLD_S = 2.5;
+const RESYNC_INTERVAL_MS = 15000;
+const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '👏'];
+
+const audioEl = document.getElementById('audio-player');
+
+function getTokensFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const error = params.get('error');
+  if (error) {
+    document.getElementById('login-view').innerHTML =
+      `<h1>🏠 Music House</h1><div class="error">Login failed: ${error}. Please try again.</div>` +
+      `<button class="login-btn" onclick="window.location.href='/login'">Log in with SoundCloud</button>`;
+    return;
+  }
+  accessToken = params.get('access_token');
+  if (accessToken) {
+    window.history.replaceState({}, document.title, '/');
+    initHouse();
+  }
+}
+
+function initHouse() {
+  document.getElementById('login-wrap').style.display = 'none';
+  document.getElementById('house-view').style.display = 'grid';
+
+  initWebSocket();
+  initUsername();
+
+  document.getElementById('search-input').addEventListener('input', debounce(handleSearch, 400));
+  document.getElementById('comment-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendComment(); });
+
+  setStatus('Connected. Ready to play.');
+}
+
+function initUsername() {
+  document.getElementById('username-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveUsername(); });
+}
+
+function saveUsername() {
+  const input = document.getElementById('username-input');
+  const val = input.value.trim();
+  if (!val) return;
+  username = val;
+  document.getElementById('username-setup').style.display = 'none';
+  document.getElementById('username-locked').style.display = 'flex';
+  document.getElementById('current-username').textContent = username;
+}
+
+function changeUsername() {
+  username = null;
+  document.getElementById('username-locked').style.display = 'none';
+  document.getElementById('username-setup').style.display = 'block';
+}
+
+// ---- WebSocket ----
+function initWebSocket() {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+  ws.onopen = () => setStatus('Connected to House.');
+
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+
+    if (msg.type === 'SESSION_ID') mySessionId = msg.payload.sessionId;
+
+    if (msg.type === 'STATE_SYNC') {
+      const previousId = currentHouseState ? currentHouseState.trackId : null;
+      currentHouseState = msg.payload;
+      renderNowPlaying(currentHouseState);
+
+      const trackChanged = currentHouseState.trackId !== previousId;
+      if (trackChanged) {
+        myVote = null;
+        mySkipped = false;
+        document.getElementById('vote-row').style.display = currentHouseState.trackId ? 'flex' : 'none';
+        updateVoteButtons();
+        loadAndPlay(currentHouseState);
+      } else if (currentHouseState.trackId) {
+        checkDriftAndCorrect(currentHouseState);
+      }
+    }
+
+    if (msg.type === 'PRESENCE') document.getElementById('presence-count').textContent = msg.payload.count;
+    if (msg.type === 'QUEUE_SYNC') { currentQueue = msg.payload; renderQueue(); }
+    if (msg.type === 'COMMENTS_SYNC') renderComments(msg.payload);
+    if (msg.type === 'NEW_COMMENT') appendComment(msg.payload);
+    if (msg.type === 'VOTES_SYNC') {
+      document.getElementById('count-fire').textContent = msg.payload.fire;
+      document.getElementById('count-neutral').textContent = msg.payload.neutral;
+      document.getElementById('count-x').textContent = msg.payload.x;
+    }
+    if (msg.type === 'SKIPS_SYNC') document.getElementById('skip-count').textContent = `(${msg.payload.count}/${msg.payload.needed})`;
+    if (msg.type === 'REACTION_UPDATE') updateReactionDisplay(msg.payload.commentId, msg.payload.reactions);
+    if (msg.type === 'QUEUE_REJECTED') setStatus(`"${msg.payload.name}" isn't allowed in this House.`);
+  };
+
+  ws.onclose = () => setStatus('Disconnected from House. Refresh to rejoin.');
+
+  setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'REQUEST_SYNC' }));
+  }, RESYNC_INTERVAL_MS);
+}
+
+// ---- Playback: resolve stream URL, then play via HTML5 audio ----
+async function loadAndPlay(state) {
+  if (!state.trackId) {
+    loadedTrackId = null;
+    audioEl.pause();
+    audioEl.src = '';
+    return;
+  }
+
+  try {
+    const res = await fetch(`/stream-url/${state.trackId}?access_token=${accessToken}`);
+    const data = await res.json();
+    if (!data.url) {
+      setStatus('Could not resolve stream for this track.');
+      return;
+    }
+
+    const elapsedSec = (Date.now() - state.startedAt) / 1000;
+    audioEl.src = data.url;
+    audioEl.currentTime = Math.max(0, elapsedSec);
+    await audioEl.play().catch(err => setStatus('Playback blocked — click anywhere to enable audio.'));
+    loadedTrackId = state.trackId;
+    setStatus(`Playing: ${state.trackTitle}`);
+  } catch (err) {
+    setStatus('Playback error: ' + err.message);
+  }
+}
+
+function checkDriftAndCorrect(state) {
+  if (loadedTrackId !== state.trackId || audioEl.paused) return;
+  const expectedSec = (Date.now() - state.startedAt) / 1000;
+  const drift = Math.abs(audioEl.currentTime - expectedSec);
+  if (drift > DRIFT_THRESHOLD_S) {
+    audioEl.currentTime = Math.max(0, expectedSec);
+    setStatus(`Re-synced (was off by ${drift.toFixed(1)}s)`);
+  }
+}
+
+// ---- Search ----
+async function handleSearch(e) {
+  const q = e.target.value.trim();
+  if (!q) { document.getElementById('results').innerHTML = ''; return; }
+
+  const res = await fetch(`/search?q=${encodeURIComponent(q)}&access_token=${accessToken}`);
+  const data = await res.json();
+  const results = data.tracks || [];
+
+  document.getElementById('results').innerHTML = results.map(track => {
+    const payload = JSON.stringify(track).replace(/'/g, "&apos;").replace(/"/g, '&quot;');
+    return `
+      <div class="result-item ${track.houseAllowed ? '' : 'blocked'}">
+        <img src="${track.artworkUrl || ''}" />
+        <div class="result-text">
+          <div class="result-title">${escapeHtml(track.title)}</div>
+          <div class="result-artist">${escapeHtml(track.username)}</div>
+          ${track.genre ? `<div class="result-genre">${escapeHtml(track.genre)}</div>` : ''}
+        </div>
+        ${track.houseAllowed
+          ? `<button class="add-btn" onclick='addToQueue(${payload})'>+ Queue</button>`
+          : `<span class="blocked-tag">Not in this House</span>`}
+      </div>
+    `;
+  }).join('');
+}
+
+function addToQueue(track) {
+  ws.send(JSON.stringify({ type: 'ADD_TO_QUEUE', payload: track }));
+  document.getElementById('search-input').value = '';
+  document.getElementById('results').innerHTML = '';
+}
+
+function removeFromQueue(index) {
+  ws.send(JSON.stringify({ type: 'REMOVE_FROM_QUEUE', payload: { index } }));
+}
+
+function renderQueue() {
+  const container = document.getElementById('queue-list');
+  if (currentQueue.length === 0) {
+    container.innerHTML = '<div class="queue-empty">Queue is empty. Search on the left to add songs.</div>';
+    return;
+  }
+  container.innerHTML = currentQueue.map((track, idx) => `
+    <div class="queue-item">
+      <div class="queue-position">${idx + 1}</div>
+      <img src="${track.artworkUrl || ''}" />
+      <div class="queue-text">
+        <div class="queue-title">${escapeHtml(track.title)}</div>
+        <div class="queue-artist">${escapeHtml(track.username)}</div>
+      </div>
+      <button class="queue-remove" onclick="removeFromQueue(${idx})">✕</button>
+    </div>
+  `).join('');
+}
+
+// ---- Voting & skip ----
+function castVote(vote) {
+  myVote = vote;
+  ws.send(JSON.stringify({ type: 'CAST_VOTE', payload: { vote } }));
+  updateVoteButtons();
+}
+function castSkip() {
+  if (mySkipped) return;
+  mySkipped = true;
+  ws.send(JSON.stringify({ type: 'CAST_SKIP' }));
+  updateVoteButtons();
+}
+function updateVoteButtons() {
+  document.getElementById('vote-fire').classList.toggle('active', myVote === 'fire');
+  document.getElementById('vote-neutral').classList.toggle('active', myVote === 'neutral');
+  document.getElementById('vote-x').classList.toggle('active', myVote === 'x');
+  document.getElementById('skip-btn').classList.toggle('active', mySkipped);
+}
+
+// ---- Comments ----
+function sendComment() {
+  const input = document.getElementById('comment-input');
+  const text = input.value.trim();
+  if (!text) return;
+  if (!username) { document.getElementById('username-input').focus(); return; }
+  ws.send(JSON.stringify({ type: 'ADD_COMMENT', payload: { username, text } }));
+  input.value = '';
+}
+
+const GROUP_WINDOW_MS = 5 * 60 * 1000;
+let lastRenderedComment = null;
+
+function shouldGroup(current, previous) {
+  if (!previous) return false;
+  if (previous.username !== current.username) return false;
+  if (current.timestamp - previous.timestamp > GROUP_WINDOW_MS) return false;
+  return true;
+}
+
+function renderComments(list) {
+  const container = document.getElementById('comments-list');
+  if (list.length === 0) { container.innerHTML = '<div class="comments-empty">No comments yet. Say something!</div>'; return; }
+  container.innerHTML = list.map((c, idx) => commentHtml(c, list[idx - 1])).join('');
+  container.scrollTop = container.scrollHeight;
+  lastRenderedComment = list[list.length - 1];
+}
+
+function appendComment(comment) {
+  const container = document.getElementById('comments-list');
+  const empty = container.querySelector('.comments-empty');
+  if (empty) container.innerHTML = '';
+  container.insertAdjacentHTML('beforeend', commentHtml(comment, lastRenderedComment));
+  lastRenderedComment = comment;
+  container.scrollTop = container.scrollHeight;
+}
+
+function commentHtml(c, previous) {
+  const time = new Date(c.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const reactions = c.reactions || {};
+  const grouped = shouldGroup(c, previous);
+
+  const chips = REACTION_EMOJIS.filter(e => reactions[e] && reactions[e].length > 0).map(e => {
+    const active = mySessionId && reactions[e].includes(mySessionId);
+    return `<div class="reaction-chip ${active ? 'active' : ''}" onclick="toggleReaction('${c.id}', '${e}')">${e} ${reactions[e].length}</div>`;
+  }).join('');
+  const addButtons = REACTION_EMOJIS.map(e => `<button class="reaction-add-btn" onclick="toggleReaction('${c.id}', '${e}')">${e}</button>`).join('');
+  const hasExtras = chips || c.trackTitle;
+
+  if (grouped) {
+    return `
+      <div class="comment grouped" id="comment-${c.id}">
+        <span class="comment-text">${escapeHtml(c.text)}</span><span class="comment-time-inline">${time}</span>
+        ${hasExtras ? `${c.trackTitle ? `<div class="comment-track">on "${escapeHtml(c.trackTitle)}"</div>` : ''}<div class="comment-reactions">${chips}</div>` : ''}
+        <div class="reaction-add-row">${addButtons}</div>
+      </div>`;
+  }
+  return `
+    <div class="comment" id="comment-${c.id}">
+      <div class="comment-header"><span class="comment-username">${escapeHtml(c.username)}</span><span class="comment-time">${time}</span></div>
+      <div class="comment-text">${escapeHtml(c.text)}</div>
+      ${c.trackTitle ? `<div class="comment-track">on "${escapeHtml(c.trackTitle)}"</div>` : ''}
+      <div class="comment-reactions">${chips}</div>
+      <div class="reaction-add-row">${addButtons}</div>
+    </div>`;
+}
+
+function toggleReaction(commentId, emoji) {
+  ws.send(JSON.stringify({ type: 'TOGGLE_REACTION', payload: { commentId, emoji } }));
+}
+function updateReactionDisplay(commentId, reactions) {
+  const el = document.getElementById(`comment-${commentId}`);
+  if (!el) return;
+  const chips = REACTION_EMOJIS.filter(e => reactions[e] && reactions[e].length > 0).map(e => {
+    const active = mySessionId && reactions[e].includes(mySessionId);
+    return `<div class="reaction-chip ${active ? 'active' : ''}" onclick="toggleReaction('${commentId}', '${e}')">${e} ${reactions[e].length}</div>`;
+  }).join('');
+  el.querySelector('.comment-reactions').innerHTML = chips;
+}
+
+// ---- Now playing / progress ----
+function renderNowPlaying(state) {
+  const container = document.getElementById('now-playing');
+  if (!state.trackId) {
+    container.innerHTML = '<div class="empty-state">No song playing yet. Search below to add one to the queue.</div>';
+    return;
+  }
+  container.innerHTML = `
+    <div class="track-name">${escapeHtml(state.trackTitle)}</div>
+    <div class="artist-name">${escapeHtml(state.artistName)}</div>
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>`;
+
+  const update = () => {
+    if (currentHouseState !== state) return;
+    const elapsed = Date.now() - state.startedAt;
+    const pct = Math.min(100, (elapsed / state.durationMs) * 100);
+    const fill = document.getElementById('progress-fill');
+    if (fill) fill.style.width = pct + '%';
+    if (pct < 100) requestAnimationFrame(update);
+  };
+  update();
+}
+
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+function escapeHtml(str) { const div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
+function debounce(fn, delay) { let timer; return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), delay); }; }
+
+getTokensFromUrl();
+</script>
+</body>
+</html>
