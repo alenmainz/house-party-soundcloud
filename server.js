@@ -403,7 +403,6 @@ app.get('/search', async (req, res) => {
 
 app.get('/stream-url/:trackId', async (req, res) => {
   const { trackId } = req.params;
-
   const { access_token } = req.query;
 
   if (!access_token) {
@@ -413,132 +412,105 @@ app.get('/stream-url/:trackId', async (req, res) => {
   }
 
   try {
-    const soundCloudUrl =
-      `${SC_API_BASE}/tracks/` +
-      `${encodeURIComponent(trackId)}/stream`;
-
     console.log(
-      `Resolving SoundCloud stream for track ${trackId}`
+      `Resolving AAC HLS stream for track ${trackId}`
     );
 
-    /*
-      Use redirect: manual.
-
-      SoundCloud normally responds to /stream with a redirect
-      to the actual signed media/HLS URL.
-
-      We want that Location header rather than having Node
-      consume the media itself.
-    */
-
-    const response =
-      await fetch(soundCloudUrl, {
+    const response = await fetch(
+      `${SC_API_BASE}/tracks/${encodeURIComponent(trackId)}/streams`,
+      {
         method: 'GET',
 
         headers: {
-          Authorization:
-            `OAuth ${access_token}`,
+          Authorization: `OAuth ${access_token}`,
+          Accept: 'application/json',
         },
 
-        redirect: 'manual',
-      });
-
-    console.log(
-      `SoundCloud /stream response: ${response.status}`
+        redirect: 'follow',
+      }
     );
 
-    // Normal expected result.
-    if (
-      response.status >= 300 &&
-      response.status < 400
-    ) {
-      const location =
-        response.headers.get(
-          'location'
-        );
+    const body = await response.text();
 
-      if (!location) {
-        console.error(
-          'SoundCloud redirected without Location header'
-        );
+    console.log(
+      `SoundCloud /streams response: ${response.status}`
+    );
 
-        return res.status(502).json({
-          error:
-            'missing_stream_location',
-        });
-      }
-
-      console.log(
-        'SoundCloud stream resolved successfully.'
+    if (!response.ok) {
+      console.error(
+        `SoundCloud streams failed (${response.status}):`,
+        body.slice(0, 1000)
       );
 
-      return res.json({
-        url: location,
-        type: 'hls',
+      return res.status(response.status).json({
+        error: 'stream_resolve_failed',
+        status: response.status,
+        detail: body.slice(0, 500),
       });
     }
 
-    /*
-      SoundCloud could theoretically return a direct
-      successful response rather than a redirect.
+    let data;
 
-      If that happens, try to use response.url.
-    */
-
-    if (response.ok) {
-      if (
-        response.url &&
-        response.url !==
-          soundCloudUrl
-      ) {
-        return res.json({
-          url: response.url,
-          type: 'hls',
-        });
-      }
-
+    try {
+      data = JSON.parse(body);
+    } catch (err) {
       console.error(
-        'SoundCloud returned 200 but no usable playback URL.'
+        'SoundCloud returned non-JSON streams response:',
+        body.slice(0, 1000)
       );
 
       return res.status(502).json({
-        error:
-          'stream_url_not_found',
+        error: 'invalid_stream_response',
       });
     }
 
-    const body =
-      await response.text();
-
-    console.error(
-      `SoundCloud stream request failed (${response.status}):`,
-      body.slice(0, 1000)
+    console.log(
+      'Available SoundCloud streams:',
+      Object.keys(data)
     );
 
-    return res
-      .status(response.status)
-      .json({
-        error:
-          'stream_resolve_failed',
+    /*
+      SoundCloud's modern API playback format is AAC over HLS.
 
-        status:
-          response.status,
+      Prefer 160 kbps AAC.
+      Fall back to 96 kbps AAC if necessary.
+    */
 
-        detail:
-          body.slice(0, 500),
+    const streamUrl =
+      data.hls_aac_160_url ||
+      data.hls_aac_96_url;
+
+    if (!streamUrl) {
+      console.error(
+        'No AAC HLS stream found:',
+        data
+      );
+
+      return res.status(404).json({
+        error: 'no_aac_hls_stream',
+        available: Object.keys(data),
       });
+    }
+
+    console.log(
+      'AAC HLS stream resolved successfully:',
+      streamUrl
+    );
+
+    return res.json({
+      url: streamUrl,
+      type: 'hls',
+    });
+
   } catch (err) {
     console.error(
       'Stream resolver exception:',
       err
     );
 
-    res.status(500).json({
-      error:
-        'stream_resolve_failed',
-
-      detail:
-        err.message,
+    return res.status(500).json({
+      error: 'stream_resolve_failed',
+      detail: err.message,
     });
   }
 });
