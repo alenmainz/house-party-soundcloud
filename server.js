@@ -1,5 +1,5 @@
 // ============================================================
-// MUSIC HOUSE PROTOTYPE — SoundCloud Edition — server.js
+// MUSIC HOUSE PROTOTYPE — SoundCloud Edition
 // ============================================================
 
 const express = require('express');
@@ -8,7 +8,6 @@ const WebSocket = require('ws');
 const path = require('path');
 const crypto = require('crypto');
 const querystring = require('querystring');
-const { Readable } = require('stream');
 
 const app = express();
 const server = http.createServer(app);
@@ -16,6 +15,10 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
+
+// ============================================================
+// SOUNDCLOUD CONFIG
+// ============================================================
 
 const CLIENT_ID = process.env.SOUNDCLOUD_CLIENT_ID;
 const CLIENT_SECRET = process.env.SOUNDCLOUD_CLIENT_SECRET;
@@ -52,6 +55,7 @@ const HOUSE_ACCEPTED_GENRES = [
 
 function isGenreAllowed(genre) {
   if (!genre) return false;
+
   return HOUSE_ACCEPTED_GENRES.includes(
     genre.trim().toLowerCase()
   );
@@ -75,33 +79,39 @@ function generateCodeChallenge(verifier) {
 const pendingAuth = new Map();
 
 // ============================================================
-// OAUTH FLOW
+// OAUTH
 // ============================================================
 
 app.get('/login', (req, res) => {
   const state = crypto.randomBytes(16).toString('hex');
+
   const codeVerifier = generateCodeVerifier();
-  const codeChallenge = generateCodeChallenge(codeVerifier);
+
+  const codeChallenge =
+    generateCodeChallenge(codeVerifier);
 
   pendingAuth.set(state, {
     codeVerifier,
     createdAt: Date.now(),
   });
 
-  for (const [key, val] of pendingAuth.entries()) {
-    if (Date.now() - val.createdAt > 10 * 60 * 1000) {
+  // Remove old auth requests.
+  for (const [key, value] of pendingAuth.entries()) {
+    if (Date.now() - value.createdAt > 10 * 60 * 1000) {
       pendingAuth.delete(key);
     }
   }
 
-  const authUrl = `${SC_AUTH_URL}?${querystring.stringify({
-    client_id: CLIENT_ID,
-    redirect_uri: REDIRECT_URI,
-    response_type: 'code',
-    code_challenge: codeChallenge,
-    code_challenge_method: 'S256',
-    state,
-  })}`;
+  const authUrl =
+    `${SC_AUTH_URL}?` +
+    querystring.stringify({
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
+      state,
+    });
 
   res.redirect(authUrl);
 });
@@ -130,11 +140,14 @@ app.get('/callback', async (req, res) => {
   try {
     const tokenResp = await fetch(SC_TOKEN_URL, {
       method: 'POST',
+
       headers: {
         accept: 'application/json; charset=utf-8',
+
         'Content-Type':
           'application/x-www-form-urlencoded',
       },
+
       body: querystring.stringify({
         grant_type: 'authorization_code',
         client_id: CLIENT_ID,
@@ -147,9 +160,9 @@ app.get('/callback', async (req, res) => {
 
     const data = await tokenResp.json();
 
-    if (!data.access_token) {
+    if (!tokenResp.ok || !data.access_token) {
       console.error(
-        'Token exchange failed:',
+        'SoundCloud token exchange failed:',
         data
       );
 
@@ -158,36 +171,66 @@ app.get('/callback', async (req, res) => {
       );
     }
 
+    const params = new URLSearchParams();
+
+    params.set(
+      'access_token',
+      data.access_token
+    );
+
+    if (data.refresh_token) {
+      params.set(
+        'refresh_token',
+        data.refresh_token
+      );
+    }
+
+    if (data.expires_in) {
+      params.set(
+        'expires_in',
+        String(data.expires_in)
+      );
+    }
+
     res.redirect(
-      `/?access_token=${encodeURIComponent(
-        data.access_token
-      )}&refresh_token=${encodeURIComponent(
-        data.refresh_token || ''
-      )}&expires_in=${encodeURIComponent(
-        data.expires_in || ''
-      )}`
+      `/?${params.toString()}`
     );
   } catch (err) {
     console.error(
       'Callback error:',
-      err.message
+      err
     );
 
-    res.redirect('/?error=server_error');
+    res.redirect(
+      '/?error=server_error'
+    );
   }
 });
+
+// ============================================================
+// REFRESH TOKEN
+// ============================================================
 
 app.post('/refresh_token', async (req, res) => {
   const { refresh_token } = req.body;
 
+  if (!refresh_token) {
+    return res.status(400).json({
+      error: 'missing_refresh_token',
+    });
+  }
+
   try {
-    const resp = await fetch(SC_TOKEN_URL, {
+    const response = await fetch(SC_TOKEN_URL, {
       method: 'POST',
+
       headers: {
         accept: 'application/json; charset=utf-8',
+
         'Content-Type':
           'application/x-www-form-urlencoded',
       },
+
       body: querystring.stringify({
         grant_type: 'refresh_token',
         client_id: CLIENT_ID,
@@ -196,17 +239,29 @@ app.post('/refresh_token', async (req, res) => {
       }),
     });
 
-    const data = await resp.json();
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error(
+        'SoundCloud token refresh failed:',
+        data
+      );
+
+      return res
+        .status(response.status)
+        .json(data);
+    }
+
     res.json(data);
   } catch (err) {
     console.error(
       'Refresh error:',
-      err.message
+      err
     );
 
-    res
-      .status(500)
-      .json({ error: 'refresh_failed' });
+    res.status(500).json({
+      error: 'refresh_failed',
+    });
   }
 });
 
@@ -218,9 +273,9 @@ app.get('/search', async (req, res) => {
   const { q, access_token } = req.query;
 
   if (!q || !access_token) {
-    return res
-      .status(400)
-      .json({ error: 'missing_params' });
+    return res.status(400).json({
+      error: 'missing_params',
+    });
   }
 
   res.set(
@@ -229,85 +284,126 @@ app.get('/search', async (req, res) => {
   );
 
   try {
-    const resp = await fetch(
-      `${SC_API_BASE}/tracks?${querystring.stringify(
-        {
-          q,
-          access: 'playable',
-          limit: 15,
-          linked_partitioning: true,
-        }
-      )}`,
-      {
-        headers: {
-          Authorization: `OAuth ${access_token}`,
-        },
-      }
-    );
+    const url =
+      `${SC_API_BASE}/tracks?` +
+      querystring.stringify({
+        q,
+        access: 'playable',
+        limit: 15,
+        linked_partitioning: true,
+      });
 
-    if (!resp.ok) {
-      const body = await resp.text();
+    const response = await fetch(url, {
+      headers: {
+        Authorization:
+          `OAuth ${access_token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const body =
+        await response.text();
 
       console.error(
-        `SoundCloud search failed (${resp.status}):`,
-        body.slice(0, 300)
+        `SoundCloud search failed (${response.status}):`,
+        body.slice(0, 500)
       );
 
-      return res.status(resp.status).json({
-        error: 'search_failed',
-        detail: body.slice(0, 300),
-      });
+      return res
+        .status(response.status)
+        .json({
+          error: 'search_failed',
+          detail: body.slice(0, 500),
+        });
     }
 
-    const data = await resp.json();
-    const tracks = data.collection || [];
+    const data =
+      await response.json();
 
-    const annotated = tracks.map((track) => ({
-      id: track.id,
-      title: track.title,
-      username: track.user
-        ? track.user.username
-        : 'Unknown artist',
-      genre: track.genre || null,
-      artworkUrl:
-        track.artwork_url ||
-        (track.user &&
-          track.user.avatar_url) ||
-        null,
-      durationMs: track.duration,
-      streamable: track.streamable,
-      houseAllowed: isGenreAllowed(
-        track.genre
-      ),
-    }));
+    const tracks =
+      data.collection || [];
 
-    res.json({ tracks: annotated });
+    const annotated =
+      tracks.map((track) => ({
+        id: track.id,
+
+        urn:
+          track.urn ||
+          null,
+
+        title:
+          track.title,
+
+        username:
+          track.user
+            ? track.user.username
+            : 'Unknown artist',
+
+        genre:
+          track.genre || null,
+
+        artworkUrl:
+          track.artwork_url ||
+          (
+            track.user &&
+            track.user.avatar_url
+          ) ||
+          null,
+
+        durationMs:
+          track.duration,
+
+        streamable:
+          track.streamable,
+
+        access:
+          track.access,
+
+        houseAllowed:
+          isGenreAllowed(
+            track.genre
+          ),
+      }));
+
+    res.json({
+      tracks: annotated,
+    });
   } catch (err) {
     console.error(
       'Search error:',
-      err.message
+      err
     );
 
-    res
-      .status(500)
-      .json({ error: 'search_failed' });
+    res.status(500).json({
+      error: 'search_failed',
+    });
   }
 });
 
 // ============================================================
-// AUDIO PROXY
+// CURRENT SOUNDCLOUD STREAM RESOLVER
 //
 // IMPORTANT:
-// The browser no longer receives SoundCloud's direct media URL.
-// Instead:
 //
-// Browser -> this server -> SoundCloud -> this server -> Browser
+// We DO NOT use:
+//   /tracks/:id/streams
 //
-// This avoids Chrome's ERR_BLOCKED_BY_ORB problem.
+// We DO NOT use:
+//   http_mp3_128_url
+//
+// SoundCloud's current documented playback endpoint is:
+//
+//   GET /tracks/:trackId/stream
+//
+// It returns/redirects us to the current signed HLS playback
+// resource.
+//
+// We return that URL to HLS.js in the browser.
 // ============================================================
 
-app.get('/stream/:trackId', async (req, res) => {
+app.get('/stream-url/:trackId', async (req, res) => {
   const { trackId } = req.params;
+
   const { access_token } = req.query;
 
   if (!access_token) {
@@ -317,172 +413,133 @@ app.get('/stream/:trackId', async (req, res) => {
   }
 
   try {
-    // First ask SoundCloud for available streams.
-    const streamResp = await fetch(
-      `${SC_API_BASE}/tracks/${trackId}/streams`,
-      {
-        headers: {
-          Authorization: `OAuth ${access_token}`,
-        },
-      }
+    const soundCloudUrl =
+      `${SC_API_BASE}/tracks/` +
+      `${encodeURIComponent(trackId)}/stream`;
+
+    console.log(
+      `Resolving SoundCloud stream for track ${trackId}`
     );
 
-    if (!streamResp.ok) {
-      const body =
-        await streamResp.text();
+    /*
+      Use redirect: manual.
 
-      console.error(
-        `Stream resolve failed (${streamResp.status}):`,
-        body.slice(0, 300)
-      );
+      SoundCloud normally responds to /stream with a redirect
+      to the actual signed media/HLS URL.
 
-      return res
-        .status(streamResp.status)
-        .json({
-          error: 'stream_resolve_failed',
+      We want that Location header rather than having Node
+      consume the media itself.
+    */
+
+    const response =
+      await fetch(soundCloudUrl, {
+        method: 'GET',
+
+        headers: {
+          Authorization:
+            `OAuth ${access_token}`,
+        },
+
+        redirect: 'manual',
+      });
+
+    console.log(
+      `SoundCloud /stream response: ${response.status}`
+    );
+
+    // Normal expected result.
+    if (
+      response.status >= 300 &&
+      response.status < 400
+    ) {
+      const location =
+        response.headers.get(
+          'location'
+        );
+
+      if (!location) {
+        console.error(
+          'SoundCloud redirected without Location header'
+        );
+
+        return res.status(502).json({
+          error:
+            'missing_stream_location',
         });
-    }
+      }
 
-    const streamData =
-      await streamResp.json();
-
-    // Prefer a normal progressive MP3.
-    // Do NOT use HLS here because Chrome's native <audio>
-    // support for HLS is inconsistent.
-    const streamUrl =
-      streamData.http_mp3_128_url ||
-      streamData.preview_mp3_128_url;
-
-    if (!streamUrl) {
-      console.error(
-        'No progressive SoundCloud stream available:',
-        streamData
+      console.log(
+        'SoundCloud stream resolved successfully.'
       );
 
-      return res.status(404).json({
-        error: 'no_stream_url_available',
+      return res.json({
+        url: location,
+        type: 'hls',
       });
     }
 
-    const requestHeaders = {};
+    /*
+      SoundCloud could theoretically return a direct
+      successful response rather than a redirect.
 
-    // Forward browser Range requests so seeking works.
-    if (req.headers.range) {
-      requestHeaders.Range =
-        req.headers.range;
-    }
+      If that happens, try to use response.url.
+    */
 
-    const audioResp = await fetch(
-      streamUrl,
-      {
-        headers: requestHeaders,
-        redirect: 'follow',
+    if (response.ok) {
+      if (
+        response.url &&
+        response.url !==
+          soundCloudUrl
+      ) {
+        return res.json({
+          url: response.url,
+          type: 'hls',
+        });
       }
-    );
-
-    if (
-      !audioResp.ok &&
-      audioResp.status !== 206
-    ) {
-      const body =
-        await audioResp.text();
 
       console.error(
-        `SoundCloud audio fetch failed (${audioResp.status}):`,
-        body.slice(0, 300)
+        'SoundCloud returned 200 but no usable playback URL.'
       );
 
-      return res
-        .status(audioResp.status)
-        .end();
+      return res.status(502).json({
+        error:
+          'stream_url_not_found',
+      });
     }
 
-    // Preserve 200 vs 206 Partial Content.
-    res.status(audioResp.status);
+    const body =
+      await response.text();
 
-    const contentType =
-      audioResp.headers.get(
-        'content-type'
-      );
-
-    const contentLength =
-      audioResp.headers.get(
-        'content-length'
-      );
-
-    const contentRange =
-      audioResp.headers.get(
-        'content-range'
-      );
-
-    const acceptRanges =
-      audioResp.headers.get(
-        'accept-ranges'
-      );
-
-    if (contentType) {
-      res.setHeader(
-        'Content-Type',
-        contentType
-      );
-    } else {
-      res.setHeader(
-        'Content-Type',
-        'audio/mpeg'
-      );
-    }
-
-    if (contentLength) {
-      res.setHeader(
-        'Content-Length',
-        contentLength
-      );
-    }
-
-    if (contentRange) {
-      res.setHeader(
-        'Content-Range',
-        contentRange
-      );
-    }
-
-    if (acceptRanges) {
-      res.setHeader(
-        'Accept-Ranges',
-        acceptRanges
-      );
-    } else {
-      res.setHeader(
-        'Accept-Ranges',
-        'bytes'
-      );
-    }
-
-    res.setHeader(
-      'Cache-Control',
-      'no-store'
+    console.error(
+      `SoundCloud stream request failed (${response.status}):`,
+      body.slice(0, 1000)
     );
 
-    if (!audioResp.body) {
-      return res.end();
-    }
+    return res
+      .status(response.status)
+      .json({
+        error:
+          'stream_resolve_failed',
 
-    Readable.fromWeb(
-      audioResp.body
-    ).pipe(res);
+        status:
+          response.status,
+
+        detail:
+          body.slice(0, 500),
+      });
   } catch (err) {
     console.error(
-      'Audio proxy error:',
+      'Stream resolver exception:',
       err
     );
 
-    if (!res.headersSent) {
-      res.status(500).json({
-        error: 'audio_proxy_failed',
-      });
-    } else {
-      res.end();
-    }
+    res.status(500).json({
+      error:
+        'stream_resolve_failed',
+
+      detail:
+        err.message,
+    });
   }
 });
 
@@ -500,13 +557,19 @@ let houseState = {
 };
 
 let queue = [];
+
 let comments = [];
+
 let votes = {};
-let skips = new Set();
-let clientSessions = new Map();
+
+let skips =
+  new Set();
+
+let clientSessions =
+  new Map();
 
 // ============================================================
-// WEBSOCKET
+// WEBSOCKETS
 // ============================================================
 
 wss.on('connection', (ws) => {
@@ -517,7 +580,10 @@ wss.on('connection', (ws) => {
       .toString(36)
       .slice(2, 10);
 
-  clientSessions.set(ws, sessionId);
+  clientSessions.set(
+    ws,
+    sessionId
+  );
 
   console.log(
     `Client connected (${sessionId}). Total: ${clientSessions.size}`
@@ -526,7 +592,10 @@ wss.on('connection', (ws) => {
   ws.send(
     JSON.stringify({
       type: 'SESSION_ID',
-      payload: { sessionId },
+
+      payload: {
+        sessionId,
+      },
     })
   );
 
@@ -561,9 +630,13 @@ wss.on('connection', (ws) => {
   ws.send(
     JSON.stringify({
       type: 'SKIPS_SYNC',
+
       payload: {
-        count: skips.size,
-        needed: skipsNeeded(),
+        count:
+          skips.size,
+
+        needed:
+          skipsNeeded(),
       },
     })
   );
@@ -574,23 +647,38 @@ wss.on('connection', (ws) => {
     let msg;
 
     try {
-      msg = JSON.parse(raw);
-    } catch (e) {
+      msg =
+        JSON.parse(raw);
+    } catch {
       return;
     }
 
     const sid =
       clientSessions.get(ws);
 
-    if (msg.type === 'PLAY_TRACK') {
-      startTrack(msg.payload);
+    // --------------------------------------------------------
+    // PLAY TRACK
+    // --------------------------------------------------------
+
+    if (
+      msg.type ===
+      'PLAY_TRACK'
+    ) {
+      startTrack(
+        msg.payload
+      );
     }
+
+    // --------------------------------------------------------
+    // QUEUE
+    // --------------------------------------------------------
 
     if (
       msg.type ===
       'ADD_TO_QUEUE'
     ) {
-      const track = msg.payload;
+      const track =
+        msg.payload;
 
       if (
         !isGenreAllowed(
@@ -599,9 +687,13 @@ wss.on('connection', (ws) => {
       ) {
         ws.send(
           JSON.stringify({
-            type: 'QUEUE_REJECTED',
+            type:
+              'QUEUE_REJECTED',
+
             payload: {
-              name: track.title,
+              name:
+                track.title,
+
               reason:
                 'not_allowed_in_house',
             },
@@ -614,11 +706,16 @@ wss.on('connection', (ws) => {
       queue.push(track);
 
       broadcast({
-        type: 'QUEUE_SYNC',
-        payload: queue,
+        type:
+          'QUEUE_SYNC',
+
+        payload:
+          queue,
       });
 
-      if (!houseState.trackId) {
+      if (
+        !houseState.trackId
+      ) {
         advanceQueue();
       }
     }
@@ -627,17 +724,25 @@ wss.on('connection', (ws) => {
       msg.type ===
       'REMOVE_FROM_QUEUE'
     ) {
-      queue = queue.filter(
-        (t, idx) =>
-          idx !==
-          msg.payload.index
-      );
+      queue =
+        queue.filter(
+          (track, idx) =>
+            idx !==
+            msg.payload.index
+        );
 
       broadcast({
-        type: 'QUEUE_SYNC',
-        payload: queue,
+        type:
+          'QUEUE_SYNC',
+
+        payload:
+          queue,
       });
     }
+
+    // --------------------------------------------------------
+    // COMMENTS
+    // --------------------------------------------------------
 
     if (
       msg.type ===
@@ -651,16 +756,26 @@ wss.on('connection', (ws) => {
             .toString(36)
             .slice(2, 8),
 
-        username: (
-          msg.payload.username ||
-          'Anonymous'
-        ).slice(0, 30),
+        username:
+          (
+            msg.payload.username ||
+            'Anonymous'
+          ).slice(
+            0,
+            30
+          ),
 
-        text: (
-          msg.payload.text || ''
-        ).slice(0, 280),
+        text:
+          (
+            msg.payload.text ||
+            ''
+          ).slice(
+            0,
+            280
+          ),
 
-        timestamp: Date.now(),
+        timestamp:
+          Date.now(),
 
         trackTitle:
           houseState.trackTitle ||
@@ -669,20 +784,32 @@ wss.on('connection', (ws) => {
         reactions: {},
       };
 
-      comments.push(comment);
+      comments.push(
+        comment
+      );
 
       if (
-        comments.length > 200
+        comments.length >
+        200
       ) {
         comments =
-          comments.slice(-200);
+          comments.slice(
+            -200
+          );
       }
 
       broadcast({
-        type: 'NEW_COMMENT',
-        payload: comment,
+        type:
+          'NEW_COMMENT',
+
+        payload:
+          comment,
       });
     }
+
+    // --------------------------------------------------------
+    // REACTIONS
+    // --------------------------------------------------------
 
     if (
       msg.type ===
@@ -691,18 +818,22 @@ wss.on('connection', (ws) => {
       const {
         commentId,
         emoji,
-      } = msg.payload;
+      } =
+        msg.payload;
 
       const comment =
         comments.find(
           (c) =>
-            c.id === commentId
+            c.id ===
+            commentId
         );
 
       if (!comment) return;
 
       if (
-        !comment.reactions[emoji]
+        !comment.reactions[
+          emoji
+        ]
       ) {
         comment.reactions[
           emoji
@@ -710,29 +841,48 @@ wss.on('connection', (ws) => {
       }
 
       const list =
-        comment.reactions[emoji];
+        comment.reactions[
+          emoji
+        ];
 
       const idx =
-        list.indexOf(sid);
+        list.indexOf(
+          sid
+        );
 
-      if (idx === -1) {
-        list.push(sid);
+      if (
+        idx === -1
+      ) {
+        list.push(
+          sid
+        );
       } else {
-        list.splice(idx, 1);
+        list.splice(
+          idx,
+          1
+        );
       }
 
       broadcast({
-        type: 'REACTION_UPDATE',
+        type:
+          'REACTION_UPDATE',
+
         payload: {
           commentId,
+
           reactions:
             comment.reactions,
         },
       });
     }
 
+    // --------------------------------------------------------
+    // VOTES
+    // --------------------------------------------------------
+
     if (
-      msg.type === 'CAST_VOTE'
+      msg.type ===
+      'CAST_VOTE'
     ) {
       if (
         [
@@ -747,27 +897,46 @@ wss.on('connection', (ws) => {
           msg.payload.vote;
 
         broadcast({
-          type: 'VOTES_SYNC',
-          payload: tallyVotes(),
+          type:
+            'VOTES_SYNC',
+
+          payload:
+            tallyVotes(),
         });
       }
     }
 
+    // --------------------------------------------------------
+    // SKIPS
+    // --------------------------------------------------------
+
     if (
-      msg.type === 'CAST_SKIP'
+      msg.type ===
+      'CAST_SKIP'
     ) {
-      skips.add(sid);
+      skips.add(
+        sid
+      );
 
       broadcast({
-        type: 'SKIPS_SYNC',
+        type:
+          'SKIPS_SYNC',
+
         payload: {
-          count: skips.size,
-          needed: skipsNeeded(),
+          count:
+            skips.size,
+
+          needed:
+            skipsNeeded(),
         },
       });
 
       checkSkipThreshold();
     }
+
+    // --------------------------------------------------------
+    // RESYNC
+    // --------------------------------------------------------
 
     if (
       msg.type ===
@@ -775,15 +944,20 @@ wss.on('connection', (ws) => {
     ) {
       ws.send(
         JSON.stringify({
-          type: 'STATE_SYNC',
-          payload: houseState,
+          type:
+            'STATE_SYNC',
+
+          payload:
+            houseState,
         })
       );
     }
   });
 
   ws.on('close', () => {
-    clientSessions.delete(ws);
+    clientSessions.delete(
+      ws
+    );
 
     console.log(
       `Client disconnected. Total: ${clientSessions.size}`
@@ -794,50 +968,76 @@ wss.on('connection', (ws) => {
 });
 
 // ============================================================
-// PLAYBACK STATE
+// TRACK STATE
 // ============================================================
 
 function startTrack(track) {
   houseState = {
-    trackId: track.id,
-    trackTitle: track.title,
+    trackId:
+      track.id,
+
+    trackTitle:
+      track.title,
+
     artistName:
       track.username,
+
     durationMs:
       track.durationMs,
-    startedAt: Date.now(),
+
+    startedAt:
+      Date.now(),
+
     roomSizeAtStart:
       clientSessions.size,
   };
 
   votes = {};
-  skips = new Set();
+
+  skips =
+    new Set();
 
   broadcast({
-    type: 'STATE_SYNC',
-    payload: houseState,
+    type:
+      'STATE_SYNC',
+
+    payload:
+      houseState,
   });
 
   broadcast({
-    type: 'VOTES_SYNC',
-    payload: tallyVotes(),
+    type:
+      'VOTES_SYNC',
+
+    payload:
+      tallyVotes(),
   });
 
   broadcast({
-    type: 'SKIPS_SYNC',
+    type:
+      'SKIPS_SYNC',
+
     payload: {
       count: 0,
-      needed: skipsNeeded(),
+
+      needed:
+        skipsNeeded(),
     },
   });
 
   console.log(
-    `Now playing: ${houseState.trackTitle} by ${houseState.artistName} (room size: ${houseState.roomSizeAtStart})`
+    `Now playing: ${houseState.trackTitle} by ${houseState.artistName}`
   );
 }
 
+// ============================================================
+// QUEUE ADVANCE
+// ============================================================
+
 function advanceQueue() {
-  if (queue.length === 0) {
+  if (
+    queue.length === 0
+  ) {
     houseState = {
       trackId: null,
       trackTitle: null,
@@ -848,20 +1048,30 @@ function advanceQueue() {
     };
 
     votes = {};
-    skips = new Set();
+
+    skips =
+      new Set();
 
     broadcast({
-      type: 'STATE_SYNC',
-      payload: houseState,
+      type:
+        'STATE_SYNC',
+
+      payload:
+        houseState,
     });
 
     broadcast({
-      type: 'VOTES_SYNC',
-      payload: tallyVotes(),
+      type:
+        'VOTES_SYNC',
+
+      payload:
+        tallyVotes(),
     });
 
     broadcast({
-      type: 'SKIPS_SYNC',
+      type:
+        'SKIPS_SYNC',
+
       payload: {
         count: 0,
         needed: 0,
@@ -871,15 +1081,23 @@ function advanceQueue() {
     return;
   }
 
-  const next = queue.shift();
+  const next =
+    queue.shift();
 
   broadcast({
-    type: 'QUEUE_SYNC',
-    payload: queue,
+    type:
+      'QUEUE_SYNC',
+
+    payload:
+      queue,
   });
 
   startTrack(next);
 }
+
+// ============================================================
+// SKIP LOGIC
+// ============================================================
 
 function skipsNeeded() {
   if (
@@ -897,7 +1115,9 @@ function skipsNeeded() {
 }
 
 function checkSkipThreshold() {
-  if (!houseState.trackId) {
+  if (
+    !houseState.trackId
+  ) {
     return;
   }
 
@@ -909,12 +1129,16 @@ function checkSkipThreshold() {
     skips.size >= needed
   ) {
     console.log(
-      `Skip threshold reached (${skips.size}/${houseState.roomSizeAtStart}). Advancing.`
+      `Skip threshold reached (${skips.size}/${houseState.roomSizeAtStart})`
     );
 
     advanceQueue();
   }
 }
+
+// ============================================================
+// VOTE LOGIC
+// ============================================================
 
 function tallyVotes() {
   const counts = {
@@ -925,21 +1149,27 @@ function tallyVotes() {
 
   Object.values(
     votes
-  ).forEach((v) => {
+  ).forEach((vote) => {
     if (
-      counts[v] !==
+      counts[vote] !==
       undefined
     ) {
-      counts[v]++;
+      counts[vote]++;
     }
   });
 
   return counts;
 }
 
+// ============================================================
+// BROADCAST
+// ============================================================
+
 function broadcast(message) {
   const data =
-    JSON.stringify(message);
+    JSON.stringify(
+      message
+    );
 
   clientSessions.forEach(
     (sid, client) => {
@@ -947,7 +1177,9 @@ function broadcast(message) {
         client.readyState ===
         WebSocket.OPEN
       ) {
-        client.send(data);
+        client.send(
+          data
+        );
       }
     }
   );
@@ -955,7 +1187,9 @@ function broadcast(message) {
 
 function broadcastPresence() {
   broadcast({
-    type: 'PRESENCE',
+    type:
+      'PRESENCE',
+
     payload: {
       count:
         clientSessions.size,
@@ -964,13 +1198,14 @@ function broadcastPresence() {
 }
 
 // ============================================================
-// AUTO-ADVANCE
+// AUTO ADVANCE
 // ============================================================
 
 setInterval(() => {
   if (
     houseState.trackId &&
-    houseState.startedAt
+    houseState.startedAt &&
+    houseState.durationMs
   ) {
     const elapsed =
       Date.now() -
@@ -981,7 +1216,7 @@ setInterval(() => {
       houseState.durationMs
     ) {
       console.log(
-        'Track ended, advancing queue.'
+        'Track ended. Advancing queue.'
       );
 
       advanceQueue();
@@ -994,10 +1229,14 @@ setInterval(() => {
 // ============================================================
 
 const PORT =
-  process.env.PORT || 3000;
+  process.env.PORT ||
+  3000;
 
-server.listen(PORT, () => {
-  console.log(
-    `Music House (SoundCloud) prototype running on port ${PORT}`
-  );
-});
+server.listen(
+  PORT,
+  () => {
+    console.log(
+      `Music House running on port ${PORT}`
+    );
+  }
+);
