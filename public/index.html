@@ -4,8 +4,12 @@
 <meta charset="UTF-8">
 <title>Music House (SoundCloud)</title>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
+
 <style>
-  * { box-sizing: border-box; }
+  * {
+    box-sizing: border-box;
+  }
 
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -551,6 +555,7 @@
 
 <div id="login-wrap" style="max-width:480px;margin:0 auto;">
   <div class="card" id="login-view">
+
     <h1>🏠 Music House</h1>
 
     <div class="subtitle">
@@ -567,14 +572,12 @@
     >
       Log in with SoundCloud
     </button>
+
   </div>
 </div>
 
-<div
-  class="layout"
-  id="house-view"
-  style="display:none;"
->
+<div class="layout" id="house-view" style="display:none;">
+
   <div class="card">
 
     <h1>🏠 Music House</h1>
@@ -585,27 +588,20 @@
       in the House
     </div>
 
-    <div
-      class="now-playing"
-      id="now-playing"
-    >
+    <div class="now-playing" id="now-playing">
       <div class="empty-state">
         No song playing yet. Search below to add one to the queue.
       </div>
     </div>
 
-    <div
-      class="vote-row"
-      id="vote-row"
-      style="display:none;"
-    >
+    <div class="vote-row" id="vote-row" style="display:none;">
+
       <button
         class="vote-btn"
         id="vote-fire"
         onclick="castVote('fire')"
       >
-        🔥
-        <span id="count-fire">0</span>
+        🔥 <span id="count-fire">0</span>
       </button>
 
       <button
@@ -613,8 +609,7 @@
         id="vote-neutral"
         onclick="castVote('neutral')"
       >
-        😐
-        <span id="count-neutral">0</span>
+        😐 <span id="count-neutral">0</span>
       </button>
 
       <button
@@ -622,8 +617,7 @@
         id="vote-x"
         onclick="castVote('x')"
       >
-        ❌
-        <span id="count-x">0</span>
+        ❌ <span id="count-x">0</span>
       </button>
 
       <button
@@ -631,11 +625,9 @@
         id="skip-btn"
         onclick="castSkip()"
       >
-        ⏭ Skip
-        <span id="skip-count">
-          (0/0)
-        </span>
+        ⏭ Skip <span id="skip-count">(0/0)</span>
       </button>
+
     </div>
 
     <input
@@ -662,15 +654,10 @@
 
   </div>
 
-  <div
-    style="
-      display:flex;
-      flex-direction:column;
-      gap:20px;
-    "
-  >
+  <div style="display:flex;flex-direction:column;gap:20px;">
 
     <div class="card">
+
       <h2>🎵 Up Next</h2>
 
       <div
@@ -681,14 +668,15 @@
           Queue is empty. Search on the left to add songs.
         </div>
       </div>
+
     </div>
 
     <div class="card">
-      <h2>
-        💬 House Comments
-      </h2>
+
+      <h2>💬 House Comments</h2>
 
       <div id="username-setup">
+
         <div class="username-row">
 
           <input
@@ -705,6 +693,7 @@
           </button>
 
         </div>
+
       </div>
 
       <div
@@ -712,6 +701,7 @@
         class="username-locked"
         style="display:none;"
       >
+
         <span>
           Commenting as
           <span
@@ -726,6 +716,7 @@
         >
           change
         </button>
+
       </div>
 
       <div
@@ -754,24 +745,41 @@
         </button>
 
       </div>
+
     </div>
 
   </div>
+
 </div>
 
 <script>
 
+// ============================================================
+// GLOBAL STATE
+// ============================================================
+
 let accessToken = null;
+
 let ws = null;
+
 let currentHouseState = null;
+
 let loadedTrackId = null;
+
 let currentQueue = [];
+
 let username = null;
+
 let mySessionId = null;
+
 let myVote = null;
+
 let mySkipped = false;
 
+let hls = null;
+
 const DRIFT_THRESHOLD_S = 2.5;
+
 const RESYNC_INTERVAL_MS = 15000;
 
 const REACTION_EMOJIS = [
@@ -788,10 +796,11 @@ const audioEl =
   );
 
 // ============================================================
-// LOGIN / TOKENS
+// AUTH
 // ============================================================
 
 function getTokensFromUrl() {
+
   const params =
     new URLSearchParams(
       window.location.search
@@ -801,12 +810,26 @@ function getTokensFromUrl() {
     params.get('error');
 
   if (error) {
+
     document.getElementById(
       'login-view'
     ).innerHTML =
-      `<h1>🏠 Music House</h1>` +
-      `<div class="error">Login failed: ${escapeHtml(error)}. Please try again.</div>` +
-      `<button class="login-btn" onclick="window.location.href='/login'">Log in with SoundCloud</button>`;
+      `
+        <h1>🏠 Music House</h1>
+
+        <div class="error">
+          Login failed:
+          ${escapeHtml(error)}.
+          Please try again.
+        </div>
+
+        <button
+          class="login-btn"
+          onclick="window.location.href='/login'"
+        >
+          Log in with SoundCloud
+        </button>
+      `;
 
     return;
   }
@@ -817,6 +840,7 @@ function getTokensFromUrl() {
     );
 
   if (accessToken) {
+
     window.history.replaceState(
       {},
       document.title,
@@ -828,10 +852,11 @@ function getTokensFromUrl() {
 }
 
 // ============================================================
-// INITIALIZATION
+// INIT
 // ============================================================
 
 function initHouse() {
+
   document.getElementById(
     'login-wrap'
   ).style.display =
@@ -843,6 +868,7 @@ function initHouse() {
     'grid';
 
   initWebSocket();
+
   initUsername();
 
   document.getElementById(
@@ -860,7 +886,11 @@ function initHouse() {
   ).addEventListener(
     'keydown',
     (e) => {
-      if (e.key === 'Enter') {
+
+      if (
+        e.key ===
+        'Enter'
+      ) {
         sendComment();
       }
     }
@@ -876,12 +906,17 @@ function initHouse() {
 // ============================================================
 
 function initUsername() {
+
   document.getElementById(
     'username-input'
   ).addEventListener(
     'keydown',
     (e) => {
-      if (e.key === 'Enter') {
+
+      if (
+        e.key ===
+        'Enter'
+      ) {
         saveUsername();
       }
     }
@@ -889,17 +924,20 @@ function initUsername() {
 }
 
 function saveUsername() {
+
   const input =
     document.getElementById(
       'username-input'
     );
 
-  const val =
+  const value =
     input.value.trim();
 
-  if (!val) return;
+  if (!value) {
+    return;
+  }
 
-  username = val;
+  username = value;
 
   document.getElementById(
     'username-setup'
@@ -918,6 +956,7 @@ function saveUsername() {
 }
 
 function changeUsername() {
+
   username = null;
 
   document.getElementById(
@@ -936,6 +975,7 @@ function changeUsername() {
 // ============================================================
 
 function initWebSocket() {
+
   const protocol =
     window.location.protocol ===
     'https:'
@@ -947,13 +987,17 @@ function initWebSocket() {
       `${protocol}//${window.location.host}`
     );
 
-  ws.onopen = () =>
-    setStatus(
-      'Connected to House.'
-    );
+  ws.onopen =
+    () => {
+
+      setStatus(
+        'Connected to House.'
+      );
+    };
 
   ws.onmessage =
     (event) => {
+
       const msg =
         JSON.parse(
           event.data
@@ -963,6 +1007,7 @@ function initWebSocket() {
         msg.type ===
         'SESSION_ID'
       ) {
+
         mySessionId =
           msg.payload.sessionId;
       }
@@ -971,6 +1016,7 @@ function initWebSocket() {
         msg.type ===
         'STATE_SYNC'
       ) {
+
         const previousId =
           currentHouseState
             ? currentHouseState.trackId
@@ -987,8 +1033,12 @@ function initWebSocket() {
           currentHouseState.trackId !==
           previousId;
 
-        if (trackChanged) {
+        if (
+          trackChanged
+        ) {
+
           myVote = null;
+
           mySkipped = false;
 
           document.getElementById(
@@ -1003,9 +1053,11 @@ function initWebSocket() {
           loadAndPlay(
             currentHouseState
           );
+
         } else if (
           currentHouseState.trackId
         ) {
+
           checkDriftAndCorrect(
             currentHouseState
           );
@@ -1016,6 +1068,7 @@ function initWebSocket() {
         msg.type ===
         'PRESENCE'
       ) {
+
         document.getElementById(
           'presence-count'
         ).textContent =
@@ -1026,6 +1079,7 @@ function initWebSocket() {
         msg.type ===
         'QUEUE_SYNC'
       ) {
+
         currentQueue =
           msg.payload;
 
@@ -1036,6 +1090,7 @@ function initWebSocket() {
         msg.type ===
         'COMMENTS_SYNC'
       ) {
+
         renderComments(
           msg.payload
         );
@@ -1045,6 +1100,7 @@ function initWebSocket() {
         msg.type ===
         'NEW_COMMENT'
       ) {
+
         appendComment(
           msg.payload
         );
@@ -1054,6 +1110,7 @@ function initWebSocket() {
         msg.type ===
         'VOTES_SYNC'
       ) {
+
         document.getElementById(
           'count-fire'
         ).textContent =
@@ -1074,6 +1131,7 @@ function initWebSocket() {
         msg.type ===
         'SKIPS_SYNC'
       ) {
+
         document.getElementById(
           'skip-count'
         ).textContent =
@@ -1084,6 +1142,7 @@ function initWebSocket() {
         msg.type ===
         'REACTION_UPDATE'
       ) {
+
         updateReactionDisplay(
           msg.payload.commentId,
           msg.payload.reactions
@@ -1094,44 +1153,56 @@ function initWebSocket() {
         msg.type ===
         'QUEUE_REJECTED'
       ) {
+
         setStatus(
           `"${msg.payload.name}" isn't allowed in this House.`
         );
       }
     };
 
-  ws.onclose = () =>
-    setStatus(
-      'Disconnected from House. Refresh to rejoin.'
-    );
+  ws.onclose =
+    () => {
 
-  setInterval(() => {
-    if (
-      ws &&
-      ws.readyState ===
-        WebSocket.OPEN
-    ) {
-      ws.send(
-        JSON.stringify({
-          type: 'REQUEST_SYNC'
-        })
+      setStatus(
+        'Disconnected from House. Refresh to rejoin.'
       );
-    }
-  }, RESYNC_INTERVAL_MS);
+    };
+
+  setInterval(
+    () => {
+
+      if (
+        ws &&
+        ws.readyState ===
+        WebSocket.OPEN
+      ) {
+
+        ws.send(
+          JSON.stringify({
+            type: 'REQUEST_SYNC'
+          })
+        );
+      }
+
+    },
+    RESYNC_INTERVAL_MS
+  );
 }
 
 // ============================================================
 // PLAYBACK
-//
-// Browser now plays /stream/:trackId from our own server.
-// It no longer touches SoundCloud's direct media URL.
 // ============================================================
 
-async function loadAndPlay(
-  state
-) {
-  if (!state.trackId) {
-    loadedTrackId = null;
+async function loadAndPlay(state) {
+
+  if (
+    !state.trackId
+  ) {
+
+    loadedTrackId =
+      null;
+
+    destroyHls();
 
     audioEl.pause();
 
@@ -1142,14 +1213,92 @@ async function loadAndPlay(
     audioEl.load();
 
     setStatus(
-      'No track playing.'
+      'No song playing.'
     );
 
     return;
   }
 
   try {
-    const elapsedSec =
+
+    setStatus(
+      'Loading audio...'
+    );
+
+    loadedTrackId =
+      null;
+
+    destroyHls();
+
+    audioEl.pause();
+
+    audioEl.removeAttribute(
+      'src'
+    );
+
+    audioEl.load();
+
+    // --------------------------------------------------------
+    // Resolve SoundCloud playback URL through our backend
+    // --------------------------------------------------------
+
+    const response =
+      await fetch(
+        `/stream-url/${encodeURIComponent(
+          state.trackId
+        )}?access_token=${encodeURIComponent(
+          accessToken
+        )}`,
+        {
+          cache: 'no-store'
+        }
+      );
+
+    let data;
+
+    try {
+
+      data =
+        await response.json();
+
+    } catch {
+
+      throw new Error(
+        `Stream server returned HTTP ${response.status}`
+      );
+    }
+
+    if (
+      !response.ok
+    ) {
+
+      console.error(
+        'Stream resolver error:',
+        data
+      );
+
+      throw new Error(
+        data.detail ||
+        data.error ||
+        `HTTP ${response.status}`
+      );
+    }
+
+    if (
+      !data.url
+    ) {
+
+      throw new Error(
+        'SoundCloud returned no playback URL.'
+      );
+    }
+
+    console.log(
+      'Resolved SoundCloud playback URL:',
+      data.url
+    );
+
+    const elapsedSeconds =
       Math.max(
         0,
         (
@@ -1158,108 +1307,273 @@ async function loadAndPlay(
         ) / 1000
       );
 
-    const streamUrl =
-      `/stream/${encodeURIComponent(
-        state.trackId
-      )}?access_token=${encodeURIComponent(
-        accessToken
-      )}`;
-
-    audioEl.pause();
-
-    audioEl.src =
-      streamUrl;
-
-    audioEl.load();
-
-    // Wait until the browser has enough information
-    // to seek into the track.
-    await waitForAudioMetadata();
+    // --------------------------------------------------------
+    // Chrome / Firefox / Edge
+    // --------------------------------------------------------
 
     if (
-      Number.isFinite(
-        audioEl.duration
-      )
+      window.Hls &&
+      Hls.isSupported()
     ) {
-      const safeTime =
-        Math.min(
-          elapsedSec,
-          Math.max(
-            0,
-            audioEl.duration -
-              0.25
-          )
-        );
 
-      try {
-        audioEl.currentTime =
-          safeTime;
-      } catch (seekErr) {
-        console.warn(
-          'Initial seek failed:',
-          seekErr
-        );
-      }
+      await playWithHlsJs(
+        data.url,
+        state,
+        elapsedSeconds
+      );
+
+      return;
     }
 
-    await audioEl.play();
+    // --------------------------------------------------------
+    // Safari native HLS
+    // --------------------------------------------------------
 
-    loadedTrackId =
-      state.trackId;
+    if (
+      audioEl.canPlayType(
+        'application/vnd.apple.mpegurl'
+      )
+    ) {
 
-    setStatus(
-      `Playing: ${state.trackTitle}`
+      await playNativeHls(
+        data.url,
+        state,
+        elapsedSeconds
+      );
+
+      return;
+    }
+
+    throw new Error(
+      'Your browser does not support HLS audio playback.'
     );
+
   } catch (err) {
+
     console.error(
-      'Playback failed:',
+      'Playback error:',
       err
     );
 
-    loadedTrackId = null;
+    loadedTrackId =
+      null;
 
-    if (
-      err &&
-      err.name ===
-        'NotAllowedError'
-    ) {
-      setStatus(
-        'Browser blocked autoplay — click anywhere on the page, then try the song again.'
-      );
-    } else {
-      setStatus(
-        `Playback error: ${
-          err.message ||
-          'Unknown error'
-        }`
-      );
-    }
+    setStatus(
+      `Playback error: ${
+        err.message ||
+        'Unknown error'
+      }`
+    );
   }
 }
 
-function waitForAudioMetadata() {
+// ============================================================
+// HLS.JS PLAYBACK
+// ============================================================
+
+function playWithHlsJs(
+  streamUrl,
+  state,
+  elapsedSeconds
+) {
+
   return new Promise(
     (resolve, reject) => {
-      if (
-        audioEl.readyState >=
-        1
-      ) {
-        resolve();
-        return;
-      }
 
-      const timeout =
-        setTimeout(() => {
-          cleanup();
+      hls =
+        new Hls({
+          enableWorker: true,
+          lowLatencyMode: false,
+          backBufferLength: 30
+        });
+
+      let settled =
+        false;
+
+      const fail =
+        (error) => {
+
+          if (
+            settled
+          ) {
+            return;
+          }
+
+          settled = true;
 
           reject(
+            error
+          );
+        };
+
+      const succeed =
+        () => {
+
+          if (
+            settled
+          ) {
+            return;
+          }
+
+          settled = true;
+
+          resolve();
+        };
+
+      hls.on(
+        Hls.Events.MEDIA_ATTACHED,
+        () => {
+
+          console.log(
+            'HLS media attached'
+          );
+
+          hls.loadSource(
+            streamUrl
+          );
+        }
+      );
+
+      hls.on(
+        Hls.Events.MANIFEST_PARSED,
+        async () => {
+
+          console.log(
+            'HLS manifest parsed'
+          );
+
+          try {
+
+            await seekAndPlay(
+              state,
+              elapsedSeconds
+            );
+
+            succeed();
+
+          } catch (err) {
+
+            fail(
+              err
+            );
+          }
+        }
+      );
+
+      hls.on(
+        Hls.Events.ERROR,
+        (
+          event,
+          data
+        ) => {
+
+          console.error(
+            'HLS error:',
+            data
+          );
+
+          if (
+            !data.fatal
+          ) {
+            return;
+          }
+
+          if (
+            data.type ===
+            Hls.ErrorTypes.NETWORK_ERROR
+          ) {
+
+            fail(
+              new Error(
+                `HLS network error: ${
+                  data.details ||
+                  'unknown'
+                }`
+              )
+            );
+
+            return;
+          }
+
+          if (
+            data.type ===
+            Hls.ErrorTypes.MEDIA_ERROR
+          ) {
+
+            try {
+
+              hls.recoverMediaError();
+
+              setStatus(
+                'Recovering audio...'
+              );
+
+              return;
+
+            } catch (
+              err
+            ) {
+
+              fail(
+                err
+              );
+
+              return;
+            }
+          }
+
+          fail(
             new Error(
-              'Timed out loading audio.'
+              `HLS fatal error: ${
+                data.details ||
+                'unknown'
+              }`
             )
           );
-        }, 15000);
+        }
+      );
+
+      hls.attachMedia(
+        audioEl
+      );
+    }
+  );
+}
+
+// ============================================================
+// SAFARI NATIVE HLS
+// ============================================================
+
+function playNativeHls(
+  streamUrl,
+  state,
+  elapsedSeconds
+) {
+
+  return new Promise(
+    (
+      resolve,
+      reject
+    ) => {
+
+      const timeout =
+        setTimeout(
+          () => {
+
+            cleanup();
+
+            reject(
+              new Error(
+                'Timed out loading HLS audio.'
+              )
+            );
+
+          },
+          15000
+        );
 
       function cleanup() {
+
         clearTimeout(
           timeout
         );
@@ -1275,22 +1589,36 @@ function waitForAudioMetadata() {
         );
       }
 
-      function handleLoaded() {
+      async function handleLoaded() {
+
         cleanup();
-        resolve();
+
+        try {
+
+          await seekAndPlay(
+            state,
+            elapsedSeconds
+          );
+
+          resolve();
+
+        } catch (
+          err
+        ) {
+
+          reject(
+            err
+          );
+        }
       }
 
       function handleError() {
-        cleanup();
 
-        const mediaError =
-          audioEl.error;
+        cleanup();
 
         reject(
           new Error(
-            mediaError
-              ? `Audio element error code ${mediaError.code}`
-              : 'Audio failed to load.'
+            getAudioErrorMessage()
           )
         );
       }
@@ -1304,18 +1632,251 @@ function waitForAudioMetadata() {
         'error',
         handleError
       );
+
+      audioEl.src =
+        streamUrl;
+
+      audioEl.load();
     }
   );
 }
 
+// ============================================================
+// SHARED AUDIO START
+// ============================================================
+
+async function seekAndPlay(
+  state,
+  elapsedSeconds
+) {
+
+  const duration =
+    Number.isFinite(
+      audioEl.duration
+    )
+      ? audioEl.duration
+      : null;
+
+  let target =
+    elapsedSeconds;
+
+  if (
+    duration
+  ) {
+
+    target =
+      Math.min(
+        target,
+        Math.max(
+          0,
+          duration - 0.5
+        )
+      );
+  }
+
+  if (
+    target >
+    0
+  ) {
+
+    try {
+
+      audioEl.currentTime =
+        target;
+
+    } catch (
+      err
+    ) {
+
+      console.warn(
+        'Initial seek failed:',
+        err
+      );
+    }
+  }
+
+  try {
+
+    await audioEl.play();
+
+  } catch (
+    err
+  ) {
+
+    console.error(
+      'audio.play() failed:',
+      err
+    );
+
+    if (
+      err.name ===
+      'NotAllowedError'
+    ) {
+
+      setStatus(
+        'Browser blocked autoplay. Click anywhere on the page to enable audio.'
+      );
+
+      installAutoplayUnlock(
+        state
+      );
+
+      throw new Error(
+        'Autoplay blocked by browser.'
+      );
+    }
+
+    throw err;
+  }
+
+  loadedTrackId =
+    state.trackId;
+
+  setStatus(
+    `Playing: ${state.trackTitle}`
+  );
+}
+
+// ============================================================
+// AUTOPLAY UNLOCK
+// ============================================================
+
+function installAutoplayUnlock(
+  state
+) {
+
+  const unlock =
+    async () => {
+
+      document.removeEventListener(
+        'click',
+        unlock
+      );
+
+      document.removeEventListener(
+        'touchstart',
+        unlock
+      );
+
+      try {
+
+        await audioEl.play();
+
+        loadedTrackId =
+          state.trackId;
+
+        setStatus(
+          `Playing: ${state.trackTitle}`
+        );
+
+      } catch (
+        err
+      ) {
+
+        console.error(
+          'Manual autoplay unlock failed:',
+          err
+        );
+
+        setStatus(
+          `Playback error: ${err.message}`
+        );
+      }
+    };
+
+  document.addEventListener(
+    'click',
+    unlock,
+    {
+      once: true
+    }
+  );
+
+  document.addEventListener(
+    'touchstart',
+    unlock,
+    {
+      once: true
+    }
+  );
+}
+
+// ============================================================
+// DESTROY OLD HLS INSTANCE
+// ============================================================
+
+function destroyHls() {
+
+  if (
+    hls
+  ) {
+
+    try {
+
+      hls.destroy();
+
+    } catch (
+      err
+    ) {
+
+      console.warn(
+        'Error destroying HLS:',
+        err
+      );
+    }
+
+    hls = null;
+  }
+}
+
+// ============================================================
+// AUDIO ERRORS
+// ============================================================
+
+function getAudioErrorMessage() {
+
+  if (
+    !audioEl.error
+  ) {
+
+    return 'Unknown audio error.';
+  }
+
+  switch (
+    audioEl.error.code
+  ) {
+
+    case 1:
+      return 'Audio loading was aborted.';
+
+    case 2:
+      return 'Audio network error.';
+
+    case 3:
+      return 'Audio decoding failed.';
+
+    case 4:
+      return 'Audio source or format is unsupported.';
+
+    default:
+      return `Audio error code ${audioEl.error.code}`;
+  }
+}
+
+// ============================================================
+// DRIFT CORRECTION
+// ============================================================
+
 function checkDriftAndCorrect(
   state
 ) {
+
   if (
     loadedTrackId !==
       state.trackId ||
     audioEl.paused
   ) {
+
     return;
   }
 
@@ -1325,9 +1886,12 @@ function checkDriftAndCorrect(
       state.startedAt
     ) / 1000;
 
+  const actualSec =
+    audioEl.currentTime;
+
   const drift =
     Math.abs(
-      audioEl.currentTime -
+      actualSec -
       expectedSec
     );
 
@@ -1335,7 +1899,9 @@ function checkDriftAndCorrect(
     drift >
     DRIFT_THRESHOLD_S
   ) {
+
     try {
+
       audioEl.currentTime =
         Math.max(
           0,
@@ -1343,11 +1909,13 @@ function checkDriftAndCorrect(
         );
 
       setStatus(
-        `Re-synced (was off by ${drift.toFixed(
-          1
-        )}s)`
+        `Re-synced (was off by ${drift.toFixed(1)}s)`
       );
-    } catch (err) {
+
+    } catch (
+      err
+    ) {
+
       console.warn(
         'Drift correction failed:',
         err
@@ -1361,21 +1929,27 @@ function checkDriftAndCorrect(
 // ============================================================
 
 async function handleSearch(
-  e
+  event
 ) {
-  const q =
-    e.target.value.trim();
 
-  if (!q) {
+  const q =
+    event.target.value.trim();
+
+  if (
+    !q
+  ) {
+
     document.getElementById(
       'results'
-    ).innerHTML = '';
+    ).innerHTML =
+      '';
 
     return;
   }
 
   try {
-    const res =
+
+    const response =
       await fetch(
         `/search?q=${encodeURIComponent(
           q
@@ -1385,107 +1959,178 @@ async function handleSearch(
       );
 
     const data =
-      await res.json();
+      await response.json();
+
+    if (
+      !response.ok
+    ) {
+
+      throw new Error(
+        data.detail ||
+        data.error ||
+        'Search failed'
+      );
+    }
 
     const results =
-      data.tracks || [];
+      data.tracks ||
+      [];
 
     document.getElementById(
       'results'
     ).innerHTML =
       results
-        .map((track) => {
-          const payload =
-            JSON.stringify(
-              track
-            )
-              .replace(
-                /'/g,
-                '&apos;'
+        .map(
+          (track) => {
+
+            const payload =
+              JSON.stringify(
+                track
               )
-              .replace(
-                /"/g,
-                '&quot;'
-              );
+                .replace(
+                  /'/g,
+                  '&apos;'
+                )
+                .replace(
+                  /"/g,
+                  '&quot;'
+                );
 
-          return `
-            <div class="result-item ${
-              track.houseAllowed
-                ? ''
-                : 'blocked'
-            }">
+            return `
+              <div class="result-item ${
+                track.houseAllowed
+                  ? ''
+                  : 'blocked'
+              }">
 
-              <img src="${
-                track.artworkUrl ||
-                ''
-              }" />
+                <img
+                  src="${
+                    track.artworkUrl ||
+                    ''
+                  }"
+                  alt=""
+                >
 
-              <div class="result-text">
+                <div class="result-text">
 
-                <div class="result-title">
-                  ${escapeHtml(
-                    track.title
-                  )}
-                </div>
+                  <div class="result-title">
+                    ${escapeHtml(
+                      track.title
+                    )}
+                  </div>
 
-                <div class="result-artist">
-                  ${escapeHtml(
-                    track.username
-                  )}
+                  <div class="result-artist">
+                    ${escapeHtml(
+                      track.username
+                    )}
+                  </div>
+
+                  ${
+                    track.genre
+                      ? `
+                        <div class="result-genre">
+                          ${escapeHtml(
+                            track.genre
+                          )}
+                        </div>
+                      `
+                      : ''
+                  }
+
                 </div>
 
                 ${
-                  track.genre
-                    ? `<div class="result-genre">${escapeHtml(
-                        track.genre
-                      )}</div>`
-                    : ''
+                  track.houseAllowed
+                    ? `
+                      <button
+                        class="add-btn"
+                        onclick='addToQueue(${payload})'
+                      >
+                        + Queue
+                      </button>
+                    `
+                    : `
+                      <span class="blocked-tag">
+                        Not in this House
+                      </span>
+                    `
                 }
 
               </div>
-
-              ${
-                track.houseAllowed
-                  ? `<button class="add-btn" onclick='addToQueue(${payload})'>+ Queue</button>`
-                  : `<span class="blocked-tag">Not in this House</span>`
-              }
-
-            </div>
-          `;
-        })
+            `;
+          }
+        )
         .join('');
-  } catch (err) {
+
+  } catch (
+    err
+  ) {
+
     console.error(
       'Search error:',
       err
     );
 
     setStatus(
-      'Search failed.'
+      `Search error: ${err.message}`
     );
   }
 }
 
-function addToQueue(track) {
+// ============================================================
+// QUEUE
+// ============================================================
+
+function addToQueue(
+  track
+) {
+
+  if (
+    !ws ||
+    ws.readyState !==
+      WebSocket.OPEN
+  ) {
+
+    setStatus(
+      'House connection is not ready.'
+    );
+
+    return;
+  }
+
   ws.send(
     JSON.stringify({
-      type: 'ADD_TO_QUEUE',
-      payload: track
+      type:
+        'ADD_TO_QUEUE',
+
+      payload:
+        track
     })
   );
 
   document.getElementById(
     'search-input'
-  ).value = '';
+  ).value =
+    '';
 
   document.getElementById(
     'results'
-  ).innerHTML = '';
+  ).innerHTML =
+    '';
 }
 
 function removeFromQueue(
   index
 ) {
+
+  if (
+    !ws ||
+    ws.readyState !==
+      WebSocket.OPEN
+  ) {
+    return;
+  }
+
   ws.send(
     JSON.stringify({
       type:
@@ -1499,6 +2144,7 @@ function removeFromQueue(
 }
 
 function renderQueue() {
+
   const container =
     document.getElementById(
       'queue-list'
@@ -1508,8 +2154,13 @@ function renderQueue() {
     currentQueue.length ===
     0
   ) {
+
     container.innerHTML =
-      '<div class="queue-empty">Queue is empty. Search on the left to add songs.</div>';
+      `
+        <div class="queue-empty">
+          Queue is empty. Search on the left to add songs.
+        </div>
+      `;
 
     return;
   }
@@ -1519,61 +2170,78 @@ function renderQueue() {
       .map(
         (
           track,
-          idx
+          index
         ) => `
-      <div class="queue-item">
+          <div class="queue-item">
 
-        <div class="queue-position">
-          ${idx + 1}
-        </div>
+            <div class="queue-position">
+              ${index + 1}
+            </div>
 
-        <img
-          src="${
-            track.artworkUrl ||
-            ''
-          }"
-        />
+            <img
+              src="${
+                track.artworkUrl ||
+                ''
+              }"
+              alt=""
+            >
 
-        <div class="queue-text">
+            <div class="queue-text">
 
-          <div class="queue-title">
-            ${escapeHtml(
-              track.title
-            )}
+              <div class="queue-title">
+                ${escapeHtml(
+                  track.title
+                )}
+              </div>
+
+              <div class="queue-artist">
+                ${escapeHtml(
+                  track.username
+                )}
+              </div>
+
+            </div>
+
+            <button
+              class="queue-remove"
+              onclick="removeFromQueue(${index})"
+            >
+              ✕
+            </button>
+
           </div>
-
-          <div class="queue-artist">
-            ${escapeHtml(
-              track.username
-            )}
-          </div>
-
-        </div>
-
-        <button
-          class="queue-remove"
-          onclick="removeFromQueue(${idx})"
-        >
-          ✕
-        </button>
-
-      </div>
-    `
+        `
       )
       .join('');
 }
 
 // ============================================================
-// VOTING / SKIP
+// VOTING
 // ============================================================
 
-function castVote(vote) {
-  myVote = vote;
+function castVote(
+  vote
+) {
+
+  if (
+    !ws ||
+    ws.readyState !==
+      WebSocket.OPEN
+  ) {
+    return;
+  }
+
+  myVote =
+    vote;
 
   ws.send(
     JSON.stringify({
-      type: 'CAST_VOTE',
-      payload: { vote }
+      type:
+        'CAST_VOTE',
+
+      payload: {
+        vote
+      }
     })
   );
 
@@ -1581,15 +2249,28 @@ function castVote(vote) {
 }
 
 function castSkip() {
-  if (mySkipped) {
+
+  if (
+    mySkipped
+  ) {
     return;
   }
 
-  mySkipped = true;
+  if (
+    !ws ||
+    ws.readyState !==
+      WebSocket.OPEN
+  ) {
+    return;
+  }
+
+  mySkipped =
+    true;
 
   ws.send(
     JSON.stringify({
-      type: 'CAST_SKIP'
+      type:
+        'CAST_SKIP'
     })
   );
 
@@ -1597,13 +2278,15 @@ function castSkip() {
 }
 
 function updateVoteButtons() {
+
   document
     .getElementById(
       'vote-fire'
     )
     .classList.toggle(
       'active',
-      myVote === 'fire'
+      myVote ===
+        'fire'
     );
 
   document
@@ -1622,7 +2305,8 @@ function updateVoteButtons() {
     )
     .classList.toggle(
       'active',
-      myVote === 'x'
+      myVote ===
+        'x'
     );
 
   document
@@ -1640,6 +2324,7 @@ function updateVoteButtons() {
 // ============================================================
 
 function sendComment() {
+
   const input =
     document.getElementById(
       'comment-input'
@@ -1648,9 +2333,16 @@ function sendComment() {
   const text =
     input.value.trim();
 
-  if (!text) return;
+  if (
+    !text
+  ) {
+    return;
+  }
 
-  if (!username) {
+  if (
+    !username
+  ) {
+
     document.getElementById(
       'username-input'
     ).focus();
@@ -1658,9 +2350,18 @@ function sendComment() {
     return;
   }
 
+  if (
+    !ws ||
+    ws.readyState !==
+      WebSocket.OPEN
+  ) {
+    return;
+  }
+
   ws.send(
     JSON.stringify({
-      type: 'ADD_COMMENT',
+      type:
+        'ADD_COMMENT',
 
       payload: {
         username,
@@ -1669,7 +2370,8 @@ function sendComment() {
     })
   );
 
-  input.value = '';
+  input.value =
+    '';
 }
 
 const GROUP_WINDOW_MS =
@@ -1682,7 +2384,10 @@ function shouldGroup(
   current,
   previous
 ) {
-  if (!previous) {
+
+  if (
+    !previous
+  ) {
     return false;
   }
 
@@ -1707,16 +2412,23 @@ function shouldGroup(
 function renderComments(
   list
 ) {
+
   const container =
     document.getElementById(
       'comments-list'
     );
 
   if (
-    list.length === 0
+    list.length ===
+    0
   ) {
+
     container.innerHTML =
-      '<div class="comments-empty">No comments yet. Say something!</div>';
+      `
+        <div class="comments-empty">
+          No comments yet. Say something!
+        </div>
+      `;
 
     return;
   }
@@ -1725,12 +2437,12 @@ function renderComments(
     list
       .map(
         (
-          c,
-          idx
+          comment,
+          index
         ) =>
           commentHtml(
-            c,
-            list[idx - 1]
+            comment,
+            list[index - 1]
           )
       )
       .join('');
@@ -1740,13 +2452,15 @@ function renderComments(
 
   lastRenderedComment =
     list[
-      list.length - 1
+      list.length -
+      1
     ];
 }
 
 function appendComment(
   comment
 ) {
+
   const container =
     document.getElementById(
       'comments-list'
@@ -1757,7 +2471,10 @@ function appendComment(
       '.comments-empty'
     );
 
-  if (empty) {
+  if (
+    empty
+  ) {
+
     container.innerHTML =
       '';
   }
@@ -1778,70 +2495,79 @@ function appendComment(
 }
 
 function commentHtml(
-  c,
+  comment,
   previous
 ) {
+
   const time =
     new Date(
-      c.timestamp
+      comment.timestamp
     ).toLocaleTimeString(
       [],
       {
-        hour: '2-digit',
+        hour:
+          '2-digit',
+
         minute:
           '2-digit'
       }
     );
 
   const reactions =
-    c.reactions || {};
+    comment.reactions ||
+    {};
 
   const grouped =
     shouldGroup(
-      c,
+      comment,
       previous
     );
 
   const chips =
     REACTION_EMOJIS
       .filter(
-        (e) =>
-          reactions[e] &&
-          reactions[e].length >
+        (emoji) =>
+          reactions[emoji] &&
+          reactions[emoji].length >
             0
       )
-      .map((e) => {
-        const active =
-          mySessionId &&
-          reactions[e].includes(
-            mySessionId
-          );
+      .map(
+        (emoji) => {
 
-        return `
-          <div
-            class="reaction-chip ${
-              active
-                ? 'active'
-                : ''
-            }"
-            onclick="toggleReaction('${c.id}', '${e}')"
-          >
-            ${e}
-            ${reactions[e].length}
-          </div>
-        `;
-      })
+          const active =
+            mySessionId &&
+            reactions[
+              emoji
+            ].includes(
+              mySessionId
+            );
+
+          return `
+            <div
+              class="reaction-chip ${
+                active
+                  ? 'active'
+                  : ''
+              }"
+              onclick="toggleReaction('${comment.id}', '${emoji}')"
+            >
+              ${emoji}
+              ${reactions[emoji].length}
+            </div>
+          `;
+        }
+      )
       .join('');
 
   const addButtons =
     REACTION_EMOJIS
       .map(
-        (e) => `
+        (emoji) => `
           <button
             class="reaction-add-btn"
-            onclick="toggleReaction('${c.id}', '${e}')"
+            onclick="toggleReaction('${comment.id}', '${emoji}')"
           >
-            ${e}
+            ${emoji}
           </button>
         `
       )
@@ -1849,18 +2575,21 @@ function commentHtml(
 
   const hasExtras =
     chips ||
-    c.trackTitle;
+    comment.trackTitle;
 
-  if (grouped) {
+  if (
+    grouped
+  ) {
+
     return `
       <div
         class="comment grouped"
-        id="comment-${c.id}"
+        id="comment-${comment.id}"
       >
 
         <span class="comment-text">
           ${escapeHtml(
-            c.text
+            comment.text
           )}
         </span>
 
@@ -1872,10 +2601,14 @@ function commentHtml(
           hasExtras
             ? `
               ${
-                c.trackTitle
-                  ? `<div class="comment-track">on "${escapeHtml(
-                      c.trackTitle
-                    )}"</div>`
+                comment.trackTitle
+                  ? `
+                    <div class="comment-track">
+                      on "${escapeHtml(
+                        comment.trackTitle
+                      )}"
+                    </div>
+                  `
                   : ''
               }
 
@@ -1897,14 +2630,14 @@ function commentHtml(
   return `
     <div
       class="comment"
-      id="comment-${c.id}"
+      id="comment-${comment.id}"
     >
 
       <div class="comment-header">
 
         <span class="comment-username">
           ${escapeHtml(
-            c.username
+            comment.username
           )}
         </span>
 
@@ -1916,15 +2649,19 @@ function commentHtml(
 
       <div class="comment-text">
         ${escapeHtml(
-          c.text
+          comment.text
         )}
       </div>
 
       ${
-        c.trackTitle
-          ? `<div class="comment-track">on "${escapeHtml(
-              c.trackTitle
-            )}"</div>`
+        comment.trackTitle
+          ? `
+            <div class="comment-track">
+              on "${escapeHtml(
+                comment.trackTitle
+              )}"
+            </div>
+          `
           : ''
       }
 
@@ -1944,6 +2681,15 @@ function toggleReaction(
   commentId,
   emoji
 ) {
+
+  if (
+    !ws ||
+    ws.readyState !==
+      WebSocket.OPEN
+  ) {
+    return;
+  }
+
   ws.send(
     JSON.stringify({
       type:
@@ -1961,55 +2707,64 @@ function updateReactionDisplay(
   commentId,
   reactions
 ) {
-  const el =
+
+  const element =
     document.getElementById(
       `comment-${commentId}`
     );
 
-  if (!el) {
+  if (
+    !element
+  ) {
     return;
   }
 
   const chips =
     REACTION_EMOJIS
       .filter(
-        (e) =>
-          reactions[e] &&
-          reactions[e].length >
+        (emoji) =>
+          reactions[emoji] &&
+          reactions[emoji].length >
             0
       )
-      .map((e) => {
-        const active =
-          mySessionId &&
-          reactions[e].includes(
-            mySessionId
-          );
+      .map(
+        (emoji) => {
 
-        return `
-          <div
-            class="reaction-chip ${
-              active
-                ? 'active'
-                : ''
-            }"
-            onclick="toggleReaction('${commentId}', '${e}')"
-          >
-            ${e}
-            ${reactions[e].length}
-          </div>
-        `;
-      })
+          const active =
+            mySessionId &&
+            reactions[
+              emoji
+            ].includes(
+              mySessionId
+            );
+
+          return `
+            <div
+              class="reaction-chip ${
+                active
+                  ? 'active'
+                  : ''
+              }"
+              onclick="toggleReaction('${commentId}', '${emoji}')"
+            >
+              ${emoji}
+              ${reactions[emoji].length}
+            </div>
+          `;
+        }
+      )
       .join('');
 
-  const reactionContainer =
-    el.querySelector(
+  const container =
+    element.querySelector(
       '.comment-reactions'
     );
 
   if (
-    reactionContainer
+    container
   ) {
-    reactionContainer.innerHTML =
+
+    container.innerHTML =
       chips;
   }
 }
@@ -2021,77 +2776,100 @@ function updateReactionDisplay(
 function renderNowPlaying(
   state
 ) {
+
   const container =
     document.getElementById(
       'now-playing'
     );
 
-  if (!state.trackId) {
+  if (
+    !state.trackId
+  ) {
+
     container.innerHTML =
-      '<div class="empty-state">No song playing yet. Search below to add one to the queue.</div>';
+      `
+        <div class="empty-state">
+          No song playing yet. Search below to add one to the queue.
+        </div>
+      `;
 
     return;
   }
 
-  container.innerHTML = `
-    <div class="track-name">
-      ${escapeHtml(
-        state.trackTitle
-      )}
-    </div>
+  container.innerHTML =
+    `
+      <div class="track-name">
+        ${escapeHtml(
+          state.trackTitle
+        )}
+      </div>
 
-    <div class="artist-name">
-      ${escapeHtml(
-        state.artistName
-      )}
-    </div>
+      <div class="artist-name">
+        ${escapeHtml(
+          state.artistName
+        )}
+      </div>
 
-    <div class="progress-bar">
-      <div
-        class="progress-fill"
-        id="progress-fill"
-      ></div>
-    </div>
-  `;
+      <div class="progress-bar">
 
-  const update = () => {
-    if (
-      currentHouseState !==
-      state
-    ) {
-      return;
-    }
+        <div
+          class="progress-fill"
+          id="progress-fill"
+        ></div>
 
-    const elapsed =
-      Date.now() -
-      state.startedAt;
+      </div>
+    `;
 
-    const pct =
-      Math.min(
-        100,
-        (
-          elapsed /
-          state.durationMs
-        ) *
-          100
-      );
+  const update =
+    () => {
 
-    const fill =
-      document.getElementById(
-        'progress-fill'
-      );
+      if (
+        currentHouseState !==
+        state
+      ) {
+        return;
+      }
 
-    if (fill) {
-      fill.style.width =
-        pct + '%';
-    }
+      const elapsed =
+        Date.now() -
+        state.startedAt;
 
-    if (pct < 100) {
-      requestAnimationFrame(
-        update
-      );
-    }
-  };
+      const pct =
+        state.durationMs
+          ? Math.min(
+              100,
+              (
+                elapsed /
+                state.durationMs
+              ) *
+              100
+            )
+          : 0;
+
+      const fill =
+        document.getElementById(
+          'progress-fill'
+        );
+
+      if (
+        fill
+      ) {
+
+        fill.style.width =
+          pct +
+          '%';
+      }
+
+      if (
+        pct <
+        100
+      ) {
+
+        requestAnimationFrame(
+          update
+        );
+      }
+    };
 
   update();
 }
@@ -2100,22 +2878,31 @@ function renderNowPlaying(
 // HELPERS
 // ============================================================
 
-function setStatus(msg) {
+function setStatus(
+  message
+) {
+
   document.getElementById(
     'status'
-  ).textContent = msg;
+  ).textContent =
+    message;
 }
 
-function escapeHtml(str) {
+function escapeHtml(
+  value
+) {
+
   const div =
     document.createElement(
       'div'
     );
 
   div.textContent =
-    str == null
+    value == null
       ? ''
-      : String(str);
+      : String(
+          value
+        );
 
   return div.innerHTML;
 }
@@ -2124,22 +2911,35 @@ function debounce(
   fn,
   delay
 ) {
+
   let timer;
 
-  return (...args) => {
-    clearTimeout(timer);
+  return (
+    ...args
+  ) => {
+
+    clearTimeout(
+      timer
+    );
 
     timer =
       setTimeout(
         () =>
-          fn(...args),
+          fn(
+            ...args
+          ),
         delay
       );
   };
 }
 
+// ============================================================
+// START
+// ============================================================
+
 getTokensFromUrl();
 
 </script>
+
 </body>
 </html>
